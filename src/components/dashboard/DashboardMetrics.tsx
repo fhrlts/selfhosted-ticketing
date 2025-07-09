@@ -1,5 +1,5 @@
 import React from 'react';
-import { DashboardMetrics } from '../../types';
+import { DashboardMetrics as DashboardMetricsType } from '../../types';
 import { 
   Ticket, 
   Clock, 
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 interface DashboardMetricsProps {
-  metrics: DashboardMetrics;
+  metrics: DashboardMetricsType;
 }
 
 const DashboardMetrics: React.FC<DashboardMetricsProps> = ({ metrics }) => {
