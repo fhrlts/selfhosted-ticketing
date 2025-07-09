@@ -1,10 +1,13 @@
 const pool = require('../config/database');
+const bcrypt = require('bcryptjs');
 
 const createTables = async () => {
   const client = await pool.connect();
   
   try {
     await client.query('BEGIN');
+
+    console.log('Creating database tables...');
 
     // Create users table
     await client.query(`
@@ -20,6 +23,7 @@ const createTables = async () => {
         is_active BOOLEAN DEFAULT true
       );
     `);
+    console.log('✓ Users table created');
 
     // Create tickets table
     await client.query(`
@@ -44,6 +48,7 @@ const createTables = async () => {
         notion_id VARCHAR(255)
       );
     `);
+    console.log('✓ Tickets table created');
 
     // Create comments table
     await client.query(`
@@ -56,6 +61,7 @@ const createTables = async () => {
         is_internal BOOLEAN DEFAULT false
       );
     `);
+    console.log('✓ Comments table created');
 
     // Create indexes for better performance
     await client.query(`
@@ -65,39 +71,143 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at);
       CREATE INDEX IF NOT EXISTS idx_comments_ticket_id ON comments(ticket_id);
     `);
+    console.log('✓ Database indexes created');
 
-    // Insert default admin user (password: admin123)
-    await client.query(`
+    // Hash the password properly
+    const passwordHash = await bcrypt.hash('admin123', 10);
+    console.log('Password hash generated:', passwordHash);
+
+    // Insert default admin user
+    const insertResult = await client.query(`
       INSERT INTO users (email, name, password_hash, role, avatar)
       VALUES (
         'admin@company.com',
         'System Administrator',
-        '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+        $1,
         'admin',
         'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=400'
       )
+      ON CONFLICT (email) DO UPDATE SET
+        password_hash = EXCLUDED.password_hash,
+        name = EXCLUDED.name,
+        role = EXCLUDED.role,
+        avatar = EXCLUDED.avatar
+      RETURNING id, email, name, role;
+    `, [passwordHash]);
+
+    console.log('✓ Default admin user created/updated:', insertResult.rows[0]);
+
+    // Insert some sample users
+    const agentPasswordHash = await bcrypt.hash('agent123', 10);
+    const userPasswordHash = await bcrypt.hash('user123', 10);
+
+    await client.query(`
+      INSERT INTO users (email, name, password_hash, role, avatar) VALUES
+      ('john.doe@company.com', 'John Doe', $1, 'agent', 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=400'),
+      ('jane.smith@company.com', 'Jane Smith', $2, 'agent', 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=400'),
+      ('user@company.com', 'Regular User', $3, 'user', 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=400')
       ON CONFLICT (email) DO NOTHING;
-    `);
+    `, [agentPasswordHash, agentPasswordHash, userPasswordHash]);
+
+    console.log('✓ Sample users created');
+
+    // Get admin user ID for sample tickets
+    const adminUser = await client.query('SELECT id FROM users WHERE email = $1', ['admin@company.com']);
+    const adminId = adminUser.rows[0].id;
+
+    // Insert sample tickets
+    const sampleTickets = [
+      {
+        id: 'TKT-001',
+        title: 'Server Database Connection Issues',
+        description: 'Production database server experiencing intermittent connection timeouts. Users reporting slow response times and occasional failures.',
+        status: 'in_progress',
+        priority: 'critical',
+        category: 'Database',
+        tags: ['production', 'database', 'urgent']
+      },
+      {
+        id: 'TKT-002',
+        title: 'Network Latency Issues in Office Network',
+        description: 'Several users reporting slow network performance, particularly when accessing shared drives and cloud services.',
+        status: 'open',
+        priority: 'high',
+        category: 'Network',
+        tags: ['network', 'performance']
+      },
+      {
+        id: 'TKT-003',
+        title: 'Email Server Maintenance Required',
+        description: 'Monthly maintenance required for email server. Need to schedule downtime and update all users.',
+        status: 'resolved',
+        priority: 'medium',
+        category: 'Maintenance',
+        tags: ['maintenance', 'email']
+      }
+    ];
+
+    for (const ticket of sampleTickets) {
+      const slaDeadline = new Date();
+      const slaHours = { critical: 8, high: 24, medium: 72, low: 120 };
+      slaDeadline.setHours(slaDeadline.getHours() + slaHours[ticket.priority]);
+
+      await client.query(`
+        INSERT INTO tickets (
+          id, title, description, status, priority, category, 
+          submitted_by_id, sla_deadline, tags
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (id) DO NOTHING;
+      `, [
+        ticket.id, ticket.title, ticket.description, ticket.status, 
+        ticket.priority, ticket.category, adminId, slaDeadline, ticket.tags
+      ]);
+    }
+
+    console.log('✓ Sample tickets created');
 
     await client.query('COMMIT');
-    console.log('Database tables created successfully!');
+    console.log('\n🎉 Database setup completed successfully!');
+    console.log('\nDefault login credentials:');
+    console.log('Email: admin@company.com');
+    console.log('Password: admin123');
+    console.log('\nOther test accounts:');
+    console.log('Agent: john.doe@company.com / agent123');
+    console.log('User: user@company.com / user123');
     
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error creating tables:', error);
+    console.error('❌ Error creating tables:', error);
     throw error;
   } finally {
     client.release();
   }
 };
 
+const testConnection = async () => {
+  try {
+    console.log('Testing database connection...');
+    const client = await pool.connect();
+    const result = await client.query('SELECT NOW()');
+    console.log('✓ Database connection successful:', result.rows[0].now);
+    client.release();
+  } catch (error) {
+    console.error('❌ Database connection failed:', error);
+    console.error('\nPlease check:');
+    console.error('1. PostgreSQL is running');
+    console.error('2. Database credentials in .env file are correct');
+    console.error('3. Database exists and user has proper permissions');
+    throw error;
+  }
+};
+
 const runMigration = async () => {
   try {
+    await testConnection();
     await createTables();
-    console.log('Migration completed successfully!');
+    console.log('\n✅ Migration completed successfully!');
     process.exit(0);
   } catch (error) {
-    console.error('Migration failed:', error);
+    console.error('\n❌ Migration failed:', error);
     process.exit(1);
   }
 };
