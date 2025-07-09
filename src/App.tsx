@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, AuthProvider } from './context/AuthContext';
+import { apiService } from './services/api';
 import { Ticket, User, DashboardMetrics } from './types';
-import { mockTickets, mockUsers, mockMetrics } from './data/mockData';
 import { updateSLAStatus } from './utils/slaUtils';
 
 // Components
@@ -19,10 +19,37 @@ import AnalyticsDashboard from './components/analytics/AnalyticsDashboard';
 const AppContent: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [tickets, setTickets] = useState<Ticket[]>(mockTickets);
-  const [users, setUsers] = useState<User[]>(mockUsers);
-  const [metrics, setMetrics] = useState<DashboardMetrics>(mockMetrics);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [showCreateTicket, setShowCreateTicket] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Load initial data
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user]);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [ticketsData, usersData, metricsData] = await Promise.all([
+        apiService.getTickets(),
+        user?.role === 'admin' ? apiService.getUsers() : Promise.resolve([]),
+        apiService.getDashboardMetrics()
+      ]);
+      
+      setTickets(ticketsData);
+      setUsers(usersData);
+      setMetrics(metricsData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Update SLA status periodically
   useEffect(() => {
@@ -35,56 +62,52 @@ const AppContent: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleCreateTicket = (ticketData: any) => {
-    const newTicket: Ticket = {
-      id: `TKT-${String(tickets.length + 1).padStart(3, '0')}`,
-      title: ticketData.title,
-      description: ticketData.description,
-      status: 'open',
-      priority: ticketData.priority,
-      category: ticketData.category,
-      submittedBy: ticketData.submittedBy,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      sla: {
-        deadline: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from now
-        timeRemaining: 24 * 60 * 60 * 1000,
-        isBreached: false
-      },
-      tags: ticketData.tags,
-      comments: []
-    };
-
-    setTickets(prev => [newTicket, ...prev]);
-    setMetrics(prev => ({
-      ...prev,
-      totalTickets: prev.totalTickets + 1,
-      openTickets: prev.openTickets + 1
-    }));
+  const handleCreateTicket = async (ticketData: any) => {
+    try {
+      const newTicket = await apiService.createTicket(ticketData);
+      setTickets(prev => [newTicket, ...prev]);
+      
+      // Refresh metrics
+      const updatedMetrics = await apiService.getDashboardMetrics();
+      setMetrics(updatedMetrics);
+    } catch (error) {
+      console.error('Error creating ticket:', error);
+    }
   };
 
-  const handleCreateUser = (userData: Partial<User>) => {
-    const newUser: User = {
-      id: `user-${users.length + 1}`,
-      name: userData.name!,
-      email: userData.email!,
-      role: userData.role!,
-      avatar: 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=400',
-      createdAt: userData.createdAt || new Date(),
-      isActive: userData.isActive || true
-    };
-
-    setUsers(prev => [...prev, newUser]);
+  const handleCreateUser = async (userData: Partial<User>) => {
+    try {
+      const newUser = await apiService.createUser(userData);
+      setUsers(prev => [...prev, newUser]);
+    } catch (error) {
+      console.error('Error creating user:', error);
+    }
   };
 
-  const handleUpdateUser = (userId: string, userData: Partial<User>) => {
-    setUsers(prev => prev.map(user => 
-      user.id === userId ? { ...user, ...userData } : user
-    ));
+  const handleUpdateUser = async (userId: string, userData: Partial<User>) => {
+    try {
+      const updatedUser = await apiService.updateUser(userId, userData);
+      setUsers(prev => prev.map(user => 
+        user.id === userId ? updatedUser : user
+      ));
+    } catch (error) {
+      console.error('Error updating user:', error);
+    }
   };
 
   if (!user) {
     return <LoginForm />;
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   const recentTickets = tickets.slice(0, 5);
@@ -101,7 +124,7 @@ const AppContent: React.FC = () => {
                 <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
                 <p className="text-sm text-gray-600">Welcome back, {user.name}!</p>
               </div>
-              <MetricsDisplay metrics={metrics} />
+              {metrics && <MetricsDisplay metrics={metrics} />}
               <RecentTickets tickets={recentTickets} />
             </div>
           )}
@@ -131,7 +154,7 @@ const AppContent: React.FC = () => {
           )}
 
           {activeTab === 'analytics' && (
-            <AnalyticsDashboard metrics={metrics} />
+            metrics && <AnalyticsDashboard metrics={metrics} />
           )}
 
           {activeTab === 'notion' && (

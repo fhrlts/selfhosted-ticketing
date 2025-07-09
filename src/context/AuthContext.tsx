@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiService } from '../services/api';
 import { User } from '../types';
 
 interface AuthContextType {
@@ -22,47 +23,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Default admin user for demo
-  const defaultAdmin: User = {
-    id: 'admin-1',
-    email: 'admin@company.com',
-    name: 'System Administrator',
-    role: 'admin',
-    avatar: 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=400',
-    createdAt: new Date(),
-    lastLogin: new Date(),
-    isActive: true
-  };
-
   useEffect(() => {
-    // Simulate checking for existing session
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
+    // Check for existing token and validate it
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      apiService.getCurrentUser()
+        .then(response => {
+          setUser(response.user);
+        })
+        .catch(() => {
+          // Token is invalid, clear it
+          apiService.clearToken();
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    if (email === 'admin@company.com' && password === 'admin123') {
-      setUser(defaultAdmin);
-      localStorage.setItem('currentUser', JSON.stringify(defaultAdmin));
+    try {
+      const response = await apiService.login(email, password);
+      setUser(response.user);
       setIsLoading(false);
       return true;
+    } catch (error) {
+      console.error('Login failed:', error);
+      setIsLoading(false);
+      return false;
     }
-    
-    setIsLoading(false);
-    return false;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('currentUser');
+  const logout = async () => {
+    try {
+      await apiService.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+    }
   };
 
   return (
