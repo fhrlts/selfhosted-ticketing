@@ -8,7 +8,7 @@ import { updateSLAStatus } from './utils/slaUtils';
 import LoginForm from './components/auth/LoginForm';
 import Header from './components/common/Header';
 import Sidebar from './components/common/Sidebar';
-import DashboardMetrics from './components/dashboard/DashboardMetrics';
+import MetricsDisplay from './components/dashboard/DashboardMetrics';
 import RecentTickets from './components/dashboard/RecentTickets';
 import TicketList from './components/tickets/TicketList';
 import CreateTicketForm from './components/tickets/CreateTicketForm';
@@ -101,7 +101,7 @@ const AppContent: React.FC = () => {
                 <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
                 <p className="text-sm text-gray-600">Welcome back, {user.name}!</p>
               </div>
-              <DashboardMetrics metrics={metrics} />
+              <MetricsDisplay metrics={metrics} />
               <RecentTickets tickets={recentTickets} />
             </div>
           )}
