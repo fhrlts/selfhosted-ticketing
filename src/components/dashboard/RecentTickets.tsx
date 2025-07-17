@@ -78,7 +78,7 @@ const RecentTickets: React.FC<RecentTicketsProps> = ({ tickets }) => {
                 <div className="text-right">
                   <div className="text-sm text-gray-500">#{ticket.id}</div>
                   <div className="text-xs text-gray-400 mt-1">
-                    {ticket.createdAt.toLocaleDateString()}
+                    {ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : "Unknown"}
                   </div>
                 </div>
               </div>

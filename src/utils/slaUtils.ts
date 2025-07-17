@@ -13,11 +13,16 @@ export const calculateSLADeadline = (priority: string, createdAt: Date): Date =>
   return deadline;
 };
 
-export const calculateTimeRemaining = (deadline: Date): number => {
+export const calculateTimeRemaining = (deadline: any): number => {
+  // Ensure deadline is a Date object
+  const deadlineDate = (deadline instanceof Date) ? deadline : new Date(deadline);
   const now = new Date();
-  const remaining = deadline.getTime() - now.getTime();
+  const remaining = deadlineDate.getTime() - now.getTime();
   return Math.max(0, remaining);
 };
+
+
+
 
 export const formatTimeRemaining = (ms: number): string => {
   if (ms === 0) return 'Expired';
@@ -38,7 +43,7 @@ export const getSLAStatus = (ticket: Ticket): 'safe' | 'warning' | 'critical' | 
   const timeRemaining = calculateTimeRemaining(ticket.sla.deadline);
   const totalSLATime = getSLADuration(ticket.priority);
   const percentageRemaining = (timeRemaining / totalSLATime) * 100;
-  
+
   if (timeRemaining === 0) return 'breached';
   if (percentageRemaining <= 10) return 'critical';
   if (percentageRemaining <= 25) return 'warning';
